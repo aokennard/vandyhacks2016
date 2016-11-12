@@ -1,0 +1,105 @@
+import requests
+import json
+import matplotlib.pyplot as plt
+% matplotlib inline
+from bs4 import BeautifulSoup
+
+reqAccounts = capitalOneRQ('enterprise','accounts')
+tableaccounts =  reqAccounts.json()['results']
+req = capitalOneRQ('enterprise','customers')
+tablecustom =  req.json()['results']
+
+
+c1_key = "5f0e7f8e03aca5405c461e8a7db009aa"
+geo_key = 'AIzaSyDCTdNO8_2yBT0Ha-ovTgmarFjueILDsZU'
+
+def capitalOneRQ(rtype, subtype):
+    return requests.get('http://api.reimaginebanking.com/'+rtype+'/'+subtype+'?key='+c1_key)
+
+	#Basic testing with the CapitalOne API
+d = {}
+r = capitalOneRQ('enterprise','accounts')
+table =  r.json()['results']
+
+for i in xrange(len(table)):
+    d[table[i]['balance']] = table[i]['rewards']
+#print d
+#print zip(xr,yr)
+plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+for k,v in d.items():
+    plt.scatter(k,v)
+plt.xlim(0,50000)
+plt.ylim(0,50000)
+plt.show()
+
+#Geocoding API
+#format https://maps.googleapis.com/maps/api/geocode/json?address=STREETNUM+(STREET+NAME),+(CITY+NAME),+STATE&key=YOUR_API_KEY
+
+
+
+def getvar(first,last): #table of  enterprise-customer
+    retdata = []
+    idp = city = state = strname = strnum = zp = None
+    for i in xrange(len(tablecustom)):
+        if tablecustom[i]['first_name']==first and tablecustom[i]['last_name']==last:
+            if '_id' in tablecustom[i]:
+                idp = tablecustom[i]['_id']
+            if 'city' in tablecustom[i]['address']:
+                city = tablecustom[i]['address']['city']
+            if 'state' in tablecustom[i]['address']:
+                state = tablecustom[i]['address']['state']
+            if 'street_name' in tablecustom[i]['address']:
+                strname = tablecustom[i]['address']['street_name']
+            if 'street_number' in tablecustom[i]['address']:
+                strnum = tablecustom[i]['address']['street_number']
+            if 'zip' in tablecustom[i]['address']:
+                zp = tablecustom[i]['address']['zip']
+            retdata.append({
+                'id': idp,
+                'cty': city,
+                'st': state,
+                'streetname': strname,
+                'streetnum': strnum,
+                'zip' : zp,
+                            })
+            break 
+    return retdata
+def getbalance(first, last): #table enterprise-accounts
+    data = getvar(first,last)
+    customerid = data[0]['id']
+    for i in xrange(len(tableaccounts)):
+        if tableaccounts[i]["customer_id"] and tableaccounts[i]["customer_id"] == customerid:
+            if tableaccounts[i]['balance']:
+                return tableaccounts[i]['balance']
+    return 0
+
+def formatname(s):
+    if s is None:
+        return None
+    return s.replace(" ","+")
+data = getvar('Emily','Kinney')[0]
+def geolocation(streetnum, streetname, city, state):
+    if streetnum is None or streetname is None or city is None or state is None:
+        return None
+    arr = []
+    rq = requests.get('https://maps.googleapis.com/maps/api/geocode/json?address='+streetnum+"+"+formatname(streetname)+",+"+formatname(city)+",+"+state+"&key="+geo_key).json()
+    arr.append(rq['results'][0]['geometry']['location']['lat'])
+    arr.append(rq['results'][0]['geometry']['location']['lng'])
+    return arr
+
+
+	masterArr = []
+def getpersondata(first, last):
+    addressdata = getvar(first, last)[0]
+    money = getbalance(first, last)
+    if None in addressdata or 0 == money:
+        return None
+    loc = geolocation(addressdata['streetnum'],formatname(addressdata['streetname']),formatname(addressdata['cty']),addressdata['st'])
+    if loc is None:
+        return None
+    loc.append(money)
+    return loc
+for i in xrange(200):
+    if getpersondata(tablecustom[i]['first_name'],tablecustom[i]['last_name']) is not None:
+        masterArr.append(getpersondata(tablecustom[i]['first_name'],tablecustom[i]['last_name']))
+print sum(masterArr,[])
